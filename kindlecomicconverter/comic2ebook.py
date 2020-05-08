@@ -49,6 +49,7 @@ from . import dualmetafix
 from . import metadata
 from . import kindle
 from . import __version__
+from xml.dom.minidom import parse, Document
 
 
 def main(argv=None):
@@ -276,14 +277,18 @@ def buildOPF(dstdir, title, filelist, cover=None):
                   "xmlns=\"http://www.idpf.org/2007/opf\">\n",
                   "<metadata xmlns:opf=\"http://www.idpf.org/2007/opf\" ",
                   "xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n",
-                  "<dc:title>", hescape(title), "</dc:title>\n",
+                  "<dc:identifier id=\"BookID\">urn:uuid:", options.uuid, "</dc:identifier>\n"])
+
+    if options.metadataXml is not None:
+        f.write(options.metadataXml)
+    else:
+        f.writelines(["<dc:title>", hescape(title), "</dc:title>\n",
                   "<dc:language>en-US</dc:language>\n",
-                  "<dc:identifier id=\"BookID\">urn:uuid:", options.uuid, "</dc:identifier>\n",
                   "<dc:contributor id=\"contributor\">KindleComicConverter-" + __version__ + "</dc:contributor>\n"])
-    if len(options.summary) > 0:
-        f.writelines(["<dc:description>", options.summary, "</dc:description>\n"])
-    for author in options.authors:
-        f.writelines(["<dc:creator>", author, "</dc:creator>\n"])
+        if len(options.summary) > 0:
+            f.writelines(["<dc:description>", options.summary, "</dc:description>\n"])
+        for author in options.authors:
+            f.writelines(["<dc:creator>", author, "</dc:creator>\n"])
     f.writelines(["<meta property=\"dcterms:modified\">" + strftime("%Y-%m-%dT%H:%M:%SZ", gmtime()) + "</meta>\n",
                   "<meta name=\"cover\" content=\"cover\"/>\n"])
     if options.iskindle and options.profile != 'Custom':
@@ -644,6 +649,25 @@ def getOutputFilename(srcpath, wantedname, ext, tomenumber):
 
 
 def getComicInfo(path, originalpath):
+    opfXml = os.path.join(path, 'content.opf')
+    if os.path.exists(opfXml):
+        opfRaw = parse(opfXml)
+
+        if len(opfRaw.getElementsByTagName('metadata')) != 0:
+            opfMetadata = opfRaw.getElementsByTagName('metadata')[0]
+
+            if len(opfMetadata.childNodes) != 0:
+                for child in opfMetadata.childNodes:
+                    nodeText = child.toprettyxml().strip()
+
+                    if nodeText:
+                        add = nodeText + '\n'
+
+                        if options.metadataXml is None:
+                            options.metadataXml = add
+                        else:
+                            options.metadataXml += add
+
     xmlPath = os.path.join(path, 'ComicInfo.xml')
     options.authors = ['KCC']
     options.chapters = []
@@ -969,6 +993,7 @@ def makeParser():
 
 def checkOptions():
     global options
+    options.metadataXml = None
     options.panelview = True
     options.iskindle = False
     options.bordersColor = None
@@ -1065,6 +1090,8 @@ def checkPre(source):
 
 
 def makeBook(source, qtgui=None):
+    print("makeBook", source)
+
     global GUI
     GUI = qtgui
     if GUI:
